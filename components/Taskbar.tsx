@@ -18,6 +18,7 @@ export const Taskbar: React.FC<TaskbarProps> = ({
   windows, activeWindowId, isDark, onAppClick, onStartClick, onActionCenterClick, onClockClick, onMinimizeAll 
 }) => {
   const [time, setTime] = useState(new Date());
+  const [hoveredApp, setHoveredApp] = useState<string | null>(null);
   
   const pinnedApps: AppId[] = ['explorer', 'edge', 'store', 'vscode', 'media'];
 
@@ -48,6 +49,7 @@ export const Taskbar: React.FC<TaskbarProps> = ({
         <div 
           className={`w-10 h-10 rounded flex items-center justify-center cursor-pointer transition-all duration-200 active:scale-95 flyout-trigger ${hoverClass}`}
           onClick={onStartClick}
+          title="ابدأ"
         >
            <img src="https://img.icons8.com/color/48/000000/windows-11.png" alt="Start" className="w-6 h-6" />
         </div>
@@ -55,26 +57,41 @@ export const Taskbar: React.FC<TaskbarProps> = ({
         {taskbarApps.map(appId => {
           const app = APPS[appId];
           if (!app) return null;
-          const isOpen = windows.some(w => w.appId === appId);
-          const isActive = windows.some(w => w.appId === appId && w.id === activeWindowId && !w.isMinimized);
-          const isMinimized = windows.some(w => w.appId === appId && w.isMinimized);
+          const openWindow = windows.find(w => w.appId === appId);
+          const isOpen = !!openWindow;
+          const isActive = isOpen && openWindow.id === activeWindowId && !openWindow.isMinimized;
           
           return (
             <div 
               key={appId}
-              className={`w-10 h-10 rounded flex items-center justify-center cursor-pointer transition-all duration-200 relative
+              className={`w-10 h-10 rounded flex items-center justify-center cursor-pointer transition-all duration-200 relative group
                 ${isOpen ? (isDark ? 'bg-white/10' : 'bg-white/30') : hoverClass}
-                ${isActive ? (isDark ? 'bg-white/20 border-b-2 border-blue-400' : 'bg-white/40 border-b-2 border-blue-500') : ''}
                 active:scale-95
               `}
               onClick={() => onAppClick(appId)}
+              onMouseEnter={() => setHoveredApp(appId)}
+              onMouseLeave={() => setHoveredApp(null)}
             >
                {React.createElement(app.icon, { 
                  className: `${app.color}`, 
                  size: 22 
                })}
+
+               {/* Indicator */}
                {isOpen && (
-                 <div className={`absolute bottom-0.5 w-1 h-1 rounded-full ${isDark ? 'bg-gray-300' : 'bg-gray-500'} ${isMinimized ? 'w-3 transition-all' : ''}`}></div>
+                 <div 
+                   className={`absolute bottom-0.5 rounded-full transition-all duration-300 
+                     ${isActive ? 'w-4 bg-blue-400 h-1' : `w-1.5 h-1.5 ${isDark ? 'bg-gray-400' : 'bg-gray-500'}`}
+                   `}
+                 ></div>
+               )}
+
+               {/* Hover Preview Tooltip */}
+               {hoveredApp === appId && isOpen && (
+                   <div className={`absolute bottom-14 bg-[#2b2b2b] text-white text-xs px-3 py-2 rounded shadow-xl whitespace-nowrap z-[60] border border-[#444] animate-in fade-in slide-in-from-bottom-2`}>
+                       {openWindow.title}
+                       <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-[#2b2b2b] border-b border-r border-[#444] rotate-45"></div>
+                   </div>
                )}
             </div>
           );

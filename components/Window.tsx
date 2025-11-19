@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Minus, Square, Copy } from 'lucide-react';
+import { X, Minus, Square, Copy, LayoutTemplate } from 'lucide-react';
 import { WindowState, AppConfig } from '../types';
 
 interface WindowProps {
@@ -21,10 +21,18 @@ export const Window: React.FC<WindowProps> = ({
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [showSnapMenu, setShowSnapMenu] = useState(false);
+  const [isOpening, setIsOpening] = useState(true);
+  
   const dragOffset = useRef({ x: 0, y: 0 });
   const resizeRef = useRef({ startX: 0, startY: 0, startW: 0, startH: 0, startWinX: 0, startWinY: 0, dir: '' });
+  const snapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Dragging
+  useEffect(() => {
+      const timer = setTimeout(() => setIsOpening(false), 200);
+      return () => clearTimeout(timer);
+  }, []);
+
   const handleMouseDown = (e: React.MouseEvent) => {
     if (state.isMaximized || (e.target as HTMLElement).closest('button')) return;
     setIsDragging(true);
@@ -35,7 +43,6 @@ export const Window: React.FC<WindowProps> = ({
     onFocus();
   };
 
-  // Resizing
   const handleResizeDown = (e: React.MouseEvent, dir: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -52,6 +59,43 @@ export const Window: React.FC<WindowProps> = ({
     };
   };
 
+  const handleSnapHover = (isEnter: boolean) => {
+    if (isEnter) {
+      snapTimerRef.current = setTimeout(() => setShowSnapMenu(true), 600);
+    } else {
+      if (snapTimerRef.current) clearTimeout(snapTimerRef.current);
+      setTimeout(() => {
+        const menu = document.getElementById(`snap-menu-${state.id}`);
+        if (!menu?.matches(':hover')) {
+            setShowSnapMenu(false);
+        }
+      }, 200);
+    }
+  };
+
+  const executeSnap = (type: 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'full') => {
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight - 48; 
+    
+    let newW = screenW / 2;
+    let newH = screenH;
+    let newX = 0;
+    let newY = 0;
+
+    switch (type) {
+        case 'left': newW = screenW / 2; newH = screenH; newX = 0; newY = 0; break;
+        case 'right': newW = screenW / 2; newH = screenH; newX = screenW / 2; newY = 0; break;
+        case 'top-left': newW = screenW / 2; newH = screenH / 2; newX = 0; newY = 0; break;
+        case 'top-right': newW = screenW / 2; newH = screenH / 2; newX = screenW / 2; newY = 0; break;
+        case 'bottom-left': newW = screenW / 2; newH = screenH / 2; newX = 0; newY = screenH / 2; break;
+        case 'bottom-right': newW = screenW / 2; newH = screenH / 2; newX = screenW / 2; newY = screenH / 2; break;
+    }
+    
+    if (state.isMaximized) onMaximize();
+    onResize(newW, newH, newX, newY);
+    setShowSnapMenu(false);
+  };
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging) {
@@ -61,116 +105,121 @@ export const Window: React.FC<WindowProps> = ({
         const deltaX = e.clientX - resizeRef.current.startX;
         const deltaY = e.clientY - resizeRef.current.startY;
         const { startW, startH, startWinX, startWinY, dir } = resizeRef.current;
+        let newW = startW, newH = startH, newX = startWinX, newY = startWinY;
+        const MIN_W = 300, MIN_H = 300;
 
-        let newW = startW;
-        let newH = startH;
-        let newX = startWinX;
-        let newY = startWinY;
-
-        if (dir.includes('e')) newW = Math.max(300, startW + deltaX);
-        if (dir.includes('s')) newH = Math.max(200, startH + deltaY);
+        if (dir.includes('e')) newW = Math.max(MIN_W, startW + deltaX);
+        if (dir.includes('s')) newH = Math.max(MIN_H, startH + deltaY);
         if (dir.includes('w')) {
-            newW = Math.max(300, startW - deltaX);
-            newX = startWinX + (startW - newW); // If width didn't change due to min-width, X shouldn't change
-            if (newW === 300) newX = startWinX + (startW - 300);
+            const proposedW = startW - deltaX;
+            if (proposedW >= MIN_W) { newW = proposedW; newX = startWinX + deltaX; }
         }
         if (dir.includes('n')) {
-            newH = Math.max(200, startH - deltaY);
-            newY = startWinY + (startH - newH);
-            if (newH === 200) newY = startWinY + (startH - 200);
+            const proposedH = startH - deltaY;
+            if (proposedH >= MIN_H) { newH = proposedH; newY = startWinY + deltaY; }
         }
-
         onResize(newW, newH, newX, newY);
       }
     };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-      setIsResizing(false);
-    };
-
+    const handleMouseUp = () => { setIsDragging(false); setIsResizing(false); };
     if (isDragging || isResizing) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     }
-
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isDragging, isResizing, onMove, onResize]);
 
-  if (state.isMinimized) return null;
-
   const style: React.CSSProperties = state.isMaximized 
-    ? { top: 0, left: 0, width: '100%', height: 'calc(100% - 48px)', borderRadius: 0 }
+    ? { top: 0, left: 0, width: '100%', height: 'calc(100% - 48px)', borderRadius: 0, border: 'none' }
     : { 
         top: state.position.y, 
         left: state.position.x, 
         width: state.size.width, 
-        height: state.size.height 
+        height: state.size.height,
+        transform: state.isMinimized ? 'scale(0.8) translateY(300px)' : 'scale(1) translateY(0)',
+        opacity: state.isMinimized ? 0 : 1
       };
 
-  const activeClass = isActive ? 'shadow-[0_10px_50px_rgba(0,0,0,0.4)] opacity-100' : 'shadow-[0_5px_20px_rgba(0,0,0,0.1)] opacity-95';
-  const themeClass = isDark ? 'bg-[#202020] border-[#333]' : 'bg-[#f9f9f9] border-gray-300/50';
+  const activeShadow = isActive ? 'shadow-[0_20px_50px_rgba(0,0,0,0.3)]' : 'shadow-[0_4px_10px_rgba(0,0,0,0.1)]';
+  const activeBorder = isDark ? (isActive ? 'border-[#555]' : 'border-[#333]') : (isActive ? 'border-gray-300' : 'border-gray-200');
+  // Enhanced Glassmorphism
+  const baseBg = isDark ? 'bg-[#202020]/95 backdrop-blur-xl' : 'bg-[#f9f9f9]/95 backdrop-blur-xl';
+  const titleBarBg = isActive ? (isDark ? 'bg-transparent' : 'bg-transparent') : (isDark ? 'bg-[#2b2b2b]/30' : 'bg-[#f3f3f3]/30');
+
+  if (state.isMinimized && !isActive) return null;
 
   return (
     <div 
-      className={`absolute flex flex-col overflow-visible transition-[opacity,box-shadow] duration-100 ease-linear pointer-events-auto 
-                 ${state.isMaximized ? '' : 'rounded-lg border'} ${activeClass} ${themeClass}`}
+      className={`absolute flex flex-col overflow-visible transition-[width,height,transform,opacity] duration-200 ease-out pointer-events-auto 
+                 ${state.isMaximized ? '' : 'rounded-lg border'} ${activeShadow} ${activeBorder} ${baseBg}
+                 ${isOpening ? 'animate-window-open' : ''}
+                 `}
       style={{ ...style, zIndex: state.zIndex }}
       onMouseDown={onFocus}
     >
-      {/* Resize Handles - Only show if not maximized */}
       {!state.isMaximized && (
           <>
-            <div className="absolute top-0 left-0 w-full h-1 cursor-n-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'n')}></div>
-            <div className="absolute bottom-0 left-0 w-full h-1 cursor-s-resize z-50" onMouseDown={(e) => handleResizeDown(e, 's')}></div>
-            <div className="absolute top-0 left-0 h-full w-1 cursor-w-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'w')}></div>
-            <div className="absolute top-0 right-0 h-full w-1 cursor-e-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'e')}></div>
-            <div className="absolute top-0 left-0 w-3 h-3 cursor-nw-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'nw')}></div>
-            <div className="absolute top-0 right-0 w-3 h-3 cursor-ne-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'ne')}></div>
-            <div className="absolute bottom-0 left-0 w-3 h-3 cursor-sw-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'sw')}></div>
-            <div className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'se')}></div>
+            <div className="absolute -top-1 left-0 w-full h-2 cursor-n-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'n')}></div>
+            <div className="absolute -bottom-1 left-0 w-full h-2 cursor-s-resize z-50" onMouseDown={(e) => handleResizeDown(e, 's')}></div>
+            <div className="absolute top-0 -left-1 h-full w-2 cursor-w-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'w')}></div>
+            <div className="absolute top-0 -right-1 h-full w-2 cursor-e-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'e')}></div>
+            <div className="absolute -top-1 -left-1 w-4 h-4 cursor-nw-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'nw')}></div>
+            <div className="absolute -top-1 -right-1 w-4 h-4 cursor-ne-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'ne')}></div>
+            <div className="absolute -bottom-1 -left-1 w-4 h-4 cursor-sw-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'sw')}></div>
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 cursor-se-resize z-50" onMouseDown={(e) => handleResizeDown(e, 'se')}></div>
           </>
       )}
 
-      {/* Title Bar */}
       <div 
-        className={`h-9 flex justify-between items-center select-none shrink-0 rounded-t-lg relative z-10
-            ${isDark ? 'bg-[#2b2b2b] text-gray-300' : 'bg-[#f3f3f3] text-gray-700'}
+        className={`h-9 flex justify-between items-center select-none shrink-0 transition-colors duration-200
+            ${state.isMaximized ? '' : 'rounded-t-lg'} ${titleBarBg}
+            ${isActive ? 'text-opacity-100' : 'text-opacity-50'}
         `}
         onMouseDown={handleMouseDown}
         onDoubleClick={onMaximize}
       >
-        <div className="flex items-center gap-3 px-3 text-xs font-semibold pointer-events-none">
+        <div className={`flex items-center gap-3 px-3 text-xs font-semibold pointer-events-none ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
           {app.icon && React.createElement(app.icon, { size: 14, className: app.color })}
           <span>{state.title}</span>
         </div>
-        <div className="flex flex-row-reverse h-full">
-          <button 
-            className="w-12 flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors rounded-tr-lg"
-            onClick={(e) => { e.stopPropagation(); onClose(); }}
-          >
-            <X size={14} />
+
+        <div className="flex flex-row-reverse h-full items-start">
+          <button className="w-12 h-9 flex items-center justify-center hover:bg-[#e81123] group transition-colors rounded-tr-lg" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+            <X size={14} className={`group-hover:text-white ${isDark ? 'text-white' : 'text-black'}`} />
           </button>
-          <button 
-            className={`w-12 flex items-center justify-center transition-colors ${isDark ? 'hover:bg-white/10' : 'hover:bg-gray-200'}`}
-            onClick={(e) => { e.stopPropagation(); onMaximize(); }}
-          >
-            {state.isMaximized ? <Copy size={12} /> : <Square size={12} />}
-          </button>
-          <button 
-            className={`w-12 flex items-center justify-center transition-colors ${isDark ? 'hover:bg-white/10' : 'hover:bg-gray-200'}`}
-            onClick={(e) => { e.stopPropagation(); onMinimize(); }}
-          >
+
+          <div className="relative" onMouseEnter={() => handleSnapHover(true)} onMouseLeave={() => handleSnapHover(false)}>
+              <button className={`w-12 h-9 flex items-center justify-center transition-colors ${isDark ? 'hover:bg-white/10 text-white' : 'hover:bg-gray-200 text-black'}`} onClick={(e) => { e.stopPropagation(); onMaximize(); }}>
+                {state.isMaximized ? <Copy size={12} /> : <Square size={12} />}
+              </button>
+              {showSnapMenu && !state.isMaximized && (
+                  <div id={`snap-menu-${state.id}`} className={`absolute top-9 right-[-40px] w-52 p-2 rounded-lg shadow-xl backdrop-blur-2xl border animate-in fade-in zoom-in-95 z-[100] ${isDark ? 'bg-[#202020]/90 border-gray-600' : 'bg-[#f3f3f3]/90 border-gray-300'}`} onClick={(e) => e.stopPropagation()}>
+                     <div className="grid grid-cols-2 gap-2">
+                        <div className="flex gap-1 h-12 cursor-pointer group">
+                            <div className={`w-1/2 h-full border rounded-l ${isDark ? 'border-gray-500 bg-gray-600 group-hover:bg-blue-500' : 'border-gray-400 bg-gray-300 group-hover:bg-blue-500'}`} onClick={() => executeSnap('left')}></div>
+                            <div className={`w-1/2 h-full border rounded-r ${isDark ? 'border-gray-500 bg-gray-600 group-hover:bg-blue-500' : 'border-gray-400 bg-gray-300 group-hover:bg-blue-500'}`} onClick={() => executeSnap('right')}></div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-0.5 h-12 w-full cursor-pointer group">
+                            <div className={`border rounded-tl ${isDark ? 'border-gray-500 bg-gray-600 group-hover:bg-blue-500' : 'border-gray-400 bg-gray-300 group-hover:bg-blue-500'}`} onClick={() => executeSnap('top-left')}></div>
+                            <div className={`border rounded-tr ${isDark ? 'border-gray-500 bg-gray-600 group-hover:bg-blue-500' : 'border-gray-400 bg-gray-300 group-hover:bg-blue-500'}`} onClick={() => executeSnap('top-right')}></div>
+                            <div className={`border rounded-bl ${isDark ? 'border-gray-500 bg-gray-600 group-hover:bg-blue-500' : 'border-gray-400 bg-gray-300 group-hover:bg-blue-500'}`} onClick={() => executeSnap('bottom-left')}></div>
+                            <div className={`border rounded-br ${isDark ? 'border-gray-500 bg-gray-600 group-hover:bg-blue-500' : 'border-gray-400 bg-gray-300 group-hover:bg-blue-500'}`} onClick={() => executeSnap('bottom-right')}></div>
+                        </div>
+                     </div>
+                  </div>
+              )}
+          </div>
+
+          <button className={`w-12 h-9 flex items-center justify-center transition-colors ${isDark ? 'hover:bg-white/10 text-white' : 'hover:bg-gray-200 text-black'}`} onClick={(e) => { e.stopPropagation(); onMinimize(); }}>
             <Minus size={14} />
           </button>
         </div>
       </div>
       
-      {/* Content */}
-      <div className={`flex-1 relative overflow-hidden ${isDark ? 'bg-[#1a1a1a]' : 'bg-white'}`}>
+      <div className={`flex-1 relative overflow-hidden ${isDark ? 'bg-[#1a1a1a]/90' : 'bg-white/95'}`}>
         {children}
       </div>
     </div>

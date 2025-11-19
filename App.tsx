@@ -1,93 +1,176 @@
-import React, { useState, useEffect } from 'react';
-import { APPS, INITIAL_FILE_SYSTEM } from './constants';
-import { WindowState, AppId, FileSystem } from './types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { APPS } from './constants';
+import { WindowState, AppId, RecentFile, ToastNotification } from './types';
 import { Taskbar } from './components/Taskbar';
-import { DesktopIcon } from './components/DesktopIcon';
 import { Window } from './components/Window';
+import { Desktop } from './components/Desktop';
 import { StartMenu } from './components/StartMenu';
 import { ActionCenter } from './components/ActionCenter';
 import { CalendarFlyout } from './components/CalendarFlyout';
-import { ContextMenu } from './components/ContextMenu';
-import { ArrowRight, User, Lock } from 'lucide-react';
+import { useFileSystem } from './hooks/useFileSystem';
+import { ArrowRight, User, Lock, X, Play } from 'lucide-react';
 
-type SystemState = 'boot' | 'lock' | 'login' | 'desktop';
+type SystemState = 'boot' | 'lock' | 'login' | 'desktop' | 'shutdown' | 'bsod';
 
 export default function App() {
-  // System State
+  // --- System State ---
   const [systemState, setSystemState] = useState<SystemState>('boot');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState(false);
-
-  // Desktop State
-  const [windows, setWindows] = useState<WindowState[]>([]);
-  const [activeWindowId, setActiveWindowId] = useState<string | null>(null);
-  const [zIndexCounter, setZIndexCounter] = useState(100);
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  
-  // Flyouts state
-  const [startMenuOpen, setStartMenuOpen] = useState(false);
-  const [actionCenterOpen, setActionCenterOpen] = useState(false);
-  const [calendarOpen, setCalendarOpen] = useState(false);
-  
-  // File System State (Persistent)
-  const [fileSystem, setFileSystem] = useState<FileSystem>(() => {
-    const saved = localStorage.getItem('win11_fs');
-    return saved ? JSON.parse(saved) : INITIAL_FILE_SYSTEM;
-  });
-  
   const [wallpaper, setWallpaper] = useState(() => {
      return localStorage.getItem('win11_wallpaper') || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564';
   });
 
-  // Context Menu
-  const [contextMenu, setContextMenu] = useState<{x: number, y: number, type: 'desktop' | 'taskbar' | null} | null>(null);
+  // --- Desktop State ---
+  const [windows, setWindows] = useState<WindowState[]>([]);
+  const [activeWindowId, setActiveWindowId] = useState<string | null>(null);
+  const [zIndexCounter, setZIndexCounter] = useState(100);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
+  const [toasts, setToasts] = useState<ToastNotification[]>([]);
+  const [showRunDialog, setShowRunDialog] = useState(false);
+  const [runInput, setRunInput] = useState('');
+  
+  // --- Flyouts State ---
+  const [startMenuOpen, setStartMenuOpen] = useState(false);
+  const [actionCenterOpen, setActionCenterOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  
+  // --- File System Hook ---
+  const { fs, setFs, operations } = useFileSystem();
 
-  // Boot Sequence
+  // --- Initialization ---
   useEffect(() => {
     const savedTheme = localStorage.getItem('win11_theme');
     if (savedTheme === 'dark') setIsDarkMode(true);
-
     setTimeout(() => setSystemState('lock'), 2500);
   }, []);
 
-  // Persist Files & Settings
+  // --- Persistence ---
+  useEffect(() => { localStorage.setItem('win11_theme', isDarkMode ? 'dark' : 'light'); }, [isDarkMode]);
+
+  // --- Global Shortcuts ---
   useEffect(() => {
-    localStorage.setItem('win11_fs', JSON.stringify(fileSystem));
-  }, [fileSystem]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Win Key
+      if (e.key === 'Meta' || e.key === 'OS') {
+        e.preventDefault();
+        if (systemState === 'desktop') {
+            setStartMenuOpen(prev => !prev);
+            setActionCenterOpen(false);
+            setCalendarOpen(false);
+        }
+      }
+      
+      // Win + R (Run)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'r') {
+          e.preventDefault();
+          if (systemState === 'desktop') {
+            setShowRunDialog(true);
+            setStartMenuOpen(false);
+          }
+      }
 
-  useEffect(() => {
-    localStorage.setItem('win11_theme', isDarkMode ? 'dark' : 'light');
-  }, [isDarkMode]);
+      // Win + L (Lock)
+      if ((e.metaKey) && e.key.toLowerCase() === 'l') {
+          e.preventDefault();
+          setSystemState('lock');
+      }
 
-  const toggleTheme = () => setIsDarkMode(!isDarkMode);
+      // Win + D (Show Desktop)
+      if ((e.metaKey) && e.key.toLowerCase() === 'd') {
+          e.preventDefault();
+          const allMinimized = windows.every(w => w.isMinimized);
+          if (allMinimized) {
+              // Restore all
+              setWindows(prev => prev.map(w => ({ ...w, isMinimized: false })));
+          } else {
+              // Minimize all
+              setWindows(prev => prev.map(w => ({ ...w, isMinimized: true })));
+          }
+      }
 
-  const handleLogin = () => {
-    // Simple login simulation
-    if (password.length > 0) { // Any password works for demo
-        setSystemState('desktop');
-    } else {
-        setLoginError(true);
-    }
+      // Alt + F4 (Close Window)
+      if (e.altKey && e.key === 'F4') {
+          e.preventDefault();
+          if (activeWindowId) {
+              closeWindow(activeWindowId);
+          }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [systemState, activeWindowId, windows]);
+
+  const handleSetWallpaper = (url: string) => {
+      setWallpaper(url);
+      localStorage.setItem('win11_wallpaper', url);
+      showToast('النظام', 'تم تغيير خلفية سطح المكتب بنجاح');
   };
 
+  // --- Toast Logic ---
+  const showToast = (title: string, message: string, type: 'info' | 'success' | 'warning' = 'info') => {
+      const id = Date.now();
+      setToasts(prev => [...prev, { id, title, message, type }]);
+      setTimeout(() => {
+          setToasts(prev => prev.filter(t => t.id !== id));
+      }, 4000);
+  };
+
+  // --- System Actions ---
+  const handleSystemAction = (action: 'shutdown' | 'restart' | 'reset' | 'bsod' | 'lock') => {
+      if (action === 'reset') {
+          localStorage.clear();
+          operations.resetFileSystem();
+          window.location.reload();
+          return;
+      }
+      if (action === 'bsod') {
+          setSystemState('bsod');
+          return;
+      }
+      if (action === 'lock') {
+          setSystemState('lock');
+          return;
+      }
+      setSystemState('shutdown');
+      setTimeout(() => {
+          if (action === 'restart') {
+              window.location.reload();
+          }
+      }, 3000);
+  };
+
+  const executeRunCommand = () => {
+      setShowRunDialog(false);
+      const cmd = runInput.trim().toLowerCase();
+      if (cmd === 'cmd') openWindow('terminal');
+      else if (cmd === 'calc') openWindow('calculator');
+      else if (cmd === 'notepad') openWindow('notepad');
+      else if (cmd === 'explorer') openWindow('explorer');
+      else if (cmd === 'edge' || cmd === 'www') openWindow('edge');
+      else if (cmd === 'settings') openWindow('settings');
+      else showToast('خطأ', `يتعذر على ويندوز العثور على '${cmd}'. تأكد من كتابة الاسم بشكل صحيح.`);
+      setRunInput('');
+  };
+
+  // --- Window Actions ---
   const openWindow = (appId: AppId, contentProps?: any) => {
     const app = APPS[appId];
     const existingWindow = windows.find(w => w.appId === appId);
-    
-    // Single instance apps
-    if (existingWindow && (appId === 'settings' || appId === 'store')) {
+    if (existingWindow && (appId === 'settings' || appId === 'store' || appId === 'calculator')) {
       restoreWindow(existingWindow.id);
       return;
     }
 
     const newWindow: WindowState = {
-      id: `win-${Date.now()}`,
+      id: `win-${Date.now()}-${Math.random()}`,
       appId,
       title: contentProps?.title || app.name,
       isMinimized: false,
       isMaximized: false,
       zIndex: zIndexCounter + 1,
-      position: { x: 50 + (windows.length * 30) % 200, y: 50 + (windows.length * 30) % 200 },
+      position: { x: 100 + (windows.length * 30) % 200, y: 50 + (windows.length * 30) % 200 },
       size: { width: app.defaultWidth || 800, height: app.defaultHeight || 600 },
       contentProps
     };
@@ -98,257 +181,206 @@ export default function App() {
     closeFlyouts();
   };
 
-  const closeWindow = (id: string) => {
-    setWindows(prev => prev.filter(w => w.id !== id));
-  };
+  const closeWindow = (id: string) => { setWindows(prev => prev.filter(w => w.id !== id)); };
+  const minimizeWindow = (id: string) => { setWindows(prev => prev.map(w => w.id === id ? { ...w, isMinimized: true } : w)); setActiveWindowId(null); };
+  const restoreWindow = (id: string) => { setZIndexCounter(prev => prev + 1); setWindows(prev => prev.map(w => w.id === id ? { ...w, isMinimized: false, zIndex: zIndexCounter + 1 } : w)); setActiveWindowId(id); };
+  const maximizeWindow = (id: string) => { setWindows(prev => prev.map(w => w.id === id ? { ...w, isMaximized: !w.isMaximized } : w)); focusWindow(id); };
+  const focusWindow = (id: string) => { if (activeWindowId === id) return; setZIndexCounter(prev => prev + 1); setWindows(prev => prev.map(w => w.id === id ? { ...w, zIndex: zIndexCounter + 1, isMinimized: false } : w)); setActiveWindowId(id); };
+  const updateWindowPosition = (id: string, x: number, y: number) => { setWindows(prev => prev.map(w => w.id === id ? { ...w, position: { x, y } } : w)); };
+  const updateWindowSize = (id: string, width: number, height: number, x: number, y: number) => { setWindows(prev => prev.map(w => w.id === id ? { ...w, size: { width, height }, position: { x, y } } : w)); };
 
-  const minimizeWindow = (id: string) => {
-    setWindows(prev => prev.map(w => w.id === id ? { ...w, isMinimized: true } : w));
-    setActiveWindowId(null);
-  };
-
-  const restoreWindow = (id: string) => {
-    setZIndexCounter(prev => prev + 1);
-    setWindows(prev => prev.map(w => w.id === id ? { ...w, isMinimized: false, zIndex: zIndexCounter + 1 } : w));
-    setActiveWindowId(id);
-  };
-
-  const maximizeWindow = (id: string) => {
-    setWindows(prev => prev.map(w => w.id === id ? { ...w, isMaximized: !w.isMaximized } : w));
-    focusWindow(id);
-  };
-
-  const focusWindow = (id: string) => {
-    if (activeWindowId === id) return;
-    setZIndexCounter(prev => prev + 1);
-    setWindows(prev => prev.map(w => w.id === id ? { ...w, zIndex: zIndexCounter + 1, isMinimized: false } : w));
-    setActiveWindowId(id);
-  };
-
-  const updateWindowPosition = (id: string, x: number, y: number) => {
-    setWindows(prev => prev.map(w => {
-        if (w.id !== id) return w;
-        // Snapping Logic
-        let newSize = w.size;
-        let newPos = { x, y };
-        let isMaximized = w.isMaximized;
-        
-        // Snap Left (RTL means Right in visual, but logic relies on coordinates)
-        // Assuming standard viewport coordinates: 0 is left edge
-        if (x <= 0) {
-            newPos = { x: 0, y: 0 };
-            newSize = { width: window.innerWidth / 2, height: window.innerHeight - 48 };
-        } 
-        // Snap Right
-        else if (x >= window.innerWidth - w.size.width) {
-            newPos = { x: window.innerWidth / 2, y: 0 };
-            newSize = { width: window.innerWidth / 2, height: window.innerHeight - 48 };
-        }
-
-        return { ...w, position: newPos, size: newSize, isMaximized };
-    }));
-  };
-
-  const updateWindowSize = (id: string, width: number, height: number, x: number, y: number) => {
-    setWindows(prev => prev.map(w => w.id === id ? { ...w, size: { width, height }, position: { x, y } } : w));
-  };
-
-  const closeFlyouts = () => {
-    setStartMenuOpen(false);
-    setActionCenterOpen(false);
-    setCalendarOpen(false);
-    setContextMenu(null);
-  };
-
-  const toggleStartMenu = () => {
-    setStartMenuOpen(prev => !prev);
-    setActionCenterOpen(false);
-    setCalendarOpen(false);
-  };
+  // --- Flyouts ---
+  const closeFlyouts = () => { setStartMenuOpen(false); setActionCenterOpen(false); setCalendarOpen(false); };
+  const toggleStartMenu = () => { setStartMenuOpen(prev => !prev); setActionCenterOpen(false); setCalendarOpen(false); };
+  const toggleActionCenter = () => { setActionCenterOpen(prev => !prev); setStartMenuOpen(false); setCalendarOpen(false); };
+  const toggleCalendar = () => { setCalendarOpen(prev => !prev); setStartMenuOpen(false); setActionCenterOpen(false); };
+  const toggleTheme = () => setIsDarkMode(prev => !prev);
   
-  const toggleActionCenter = () => {
-    setActionCenterOpen(prev => !prev);
-    setStartMenuOpen(false);
-    setCalendarOpen(false);
+  const handleLogin = () => { 
+      if (password.length > 0) {
+          setLoginError(false);
+          setSystemState('desktop'); 
+      } else { 
+          setLoginError(true); 
+          setTimeout(() => setLoginError(false), 500);
+      } 
   };
 
-  const toggleCalendar = () => {
-    setCalendarOpen(prev => !prev);
-    setStartMenuOpen(false);
-    setActionCenterOpen(false);
-  };
-
-  const handleContextMenu = (e: React.MouseEvent, type: 'desktop' | 'taskbar') => {
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, type });
-  };
-
-  // --- Render Stages ---
-
-  if (systemState === 'boot') {
-      return (
-          <div className="h-screen w-screen bg-black flex flex-col items-center justify-center text-white">
-              <div className="mb-8">
-                <img src="https://img.icons8.com/color/96/000000/windows-11.png" alt="Logo" className="w-24 h-24 animate-pulse" />
+  // --- BSOD Render ---
+  if (systemState === 'bsod') return (
+      <div className="h-screen w-screen bg-[#0078d7] flex flex-col p-20 text-white font-segoe cursor-none select-none">
+          <div className="text-[120px] mb-8">:(</div>
+          <div className="text-2xl mb-8">واجه جهازك مشكلة ويجب إعادة تشغيله. نحن نقوم بجمع بعض المعلومات عن الخطأ، ثم سنقوم بإعادة التشغيل لك.</div>
+          <div className="text-2xl mb-16">20% مكتمل</div>
+          <div className="flex items-center gap-4">
+              <div className="w-24 h-24 bg-white p-1"><div className="w-full h-full bg-black"></div></div>
+              <div className="text-sm">
+                  <p>لمزيد من المعلومات حول هذه المشكلة والإصلاحات المحتملة، تفضل بزيارة https://www.windows.com/stopcode</p>
+                  <p className="mt-2">اذا اتصلت بشخص الدعم الفني، فأعطه هذه المعلومات:</p>
+                  <p>رمز التوقف: CRITICAL_PROCESS_DIED</p>
               </div>
-              <div className="w-8 h-8 border-4 border-white/20 border-t-blue-500 rounded-full animate-spin"></div>
           </div>
-      );
-  }
+      </div>
+  );
 
-  if (systemState === 'lock') {
-      return (
-          <div 
-            className="h-screen w-screen bg-cover bg-center flex flex-col items-center pt-32 text-white transition-all duration-500"
-            style={{ backgroundImage: `url(${wallpaper})` }}
-            onClick={() => setSystemState('login')}
-          >
-             <div className="text-8xl font-light mb-4">
-                 {new Date().toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', hour12: false})}
-             </div>
-             <div className="text-3xl font-medium">
-                 {new Date().toLocaleDateString('ar-EG', {weekday: 'long', day: 'numeric', month: 'long'})}
-             </div>
-          </div>
-      );
-  }
+  if (systemState === 'shutdown') return (
+      <div className="h-screen w-screen bg-black flex flex-col items-center justify-center text-white cursor-none">
+           <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin mb-4"></div>
+           <div className="text-lg font-light">جاري إيقاف التشغيل...</div>
+      </div>
+  );
 
-  if (systemState === 'login') {
-    return (
-        <div 
-          className="h-screen w-screen bg-cover bg-center flex flex-col items-center justify-center backdrop-blur-xl"
-          style={{ backgroundImage: `url(${wallpaper})` }}
-        >
-            <div className="absolute inset-0 bg-black/20 backdrop-blur-md"></div>
-            <div className="z-10 flex flex-col items-center gap-6">
-                <div className="w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center border-4 border-white/20 shadow-lg">
-                    <User size={64} className="text-gray-500" />
+  if (systemState === 'boot') return (
+      <div className="h-screen w-screen bg-black flex flex-col items-center justify-center text-white">
+          <div className="mb-12"><img src="https://img.icons8.com/color/96/000000/windows-11.png" alt="Logo" className="w-24 h-24 animate-pulse" /></div>
+          <div className="w-8 h-8 border-4 border-white/20 border-t-blue-500 rounded-full animate-spin"></div>
+      </div>
+  );
+  
+  if (systemState === 'lock') return (
+      <div className="h-screen w-screen bg-cover bg-center flex flex-col items-center pt-32 text-white transition-all duration-500" style={{ backgroundImage: `url(${wallpaper})` }} onClick={() => setSystemState('login')}>
+         <div className="text-8xl font-light mb-4 select-none animate-in fade-in zoom-in duration-500 drop-shadow-md">{new Date().toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', hour12: false})}</div>
+         <div className="text-3xl font-medium select-none drop-shadow-md">{new Date().toLocaleDateString('ar-EG', {weekday: 'long', day: 'numeric', month: 'long'})}</div>
+      </div>
+  );
+  
+  if (systemState === 'login') return (
+    <div className="h-screen w-screen bg-cover bg-center flex flex-col items-center justify-center backdrop-blur-xl" style={{ backgroundImage: `url(${wallpaper})` }}>
+        <div className="absolute inset-0 bg-black/30 backdrop-blur-md"></div>
+        <div className={`z-10 flex flex-col items-center gap-6 animate-fadeIn ${loginError ? 'animate-shake' : ''}`}>
+            <div className="w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center border-4 border-white/20 shadow-lg"><User size={64} className="text-gray-500" /></div>
+            <div className="text-2xl font-bold text-white">Admin</div>
+            <div className="flex flex-col gap-2 w-64">
+                <div className="flex bg-black/30 backdrop-blur-sm rounded border-b-2 border-white/50 focus-within:border-blue-400 transition">
+                    <input type="password" placeholder="كلمة المرور" className="flex-1 bg-transparent text-white px-3 py-2 outline-none placeholder-gray-300 text-sm" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()} autoFocus />
+                    <button className="px-3 hover:bg-white/10" onClick={handleLogin}><ArrowRight className="text-white" size={20} /></button>
                 </div>
-                <div className="text-2xl font-bold text-white">Admin</div>
-                <div className="flex flex-col gap-2 w-64">
-                    <div className="flex bg-black/30 backdrop-blur-sm rounded border-b-2 border-white/50 focus-within:border-blue-400 transition">
-                        <input 
-                            type="password" 
-                            placeholder="كلمة المرور (أكتب أي شيء)"
-                            className="flex-1 bg-transparent text-white px-3 py-2 outline-none placeholder-gray-300 text-sm"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                            autoFocus
-                        />
-                        <button className="px-3 hover:bg-white/10" onClick={handleLogin}>
-                            <ArrowRight className="text-white" size={20} />
-                        </button>
-                    </div>
-                    {loginError && <span className="text-xs text-red-300 font-bold">كلمة المرور غير صحيحة</span>}
-                </div>
-                <div 
-                    className="mt-8 flex items-center gap-2 text-white/80 hover:text-white cursor-pointer text-sm"
-                    onClick={() => setSystemState('lock')}
-                >
-                    <Lock size={14} />
-                    <span>خيارات تسجيل الدخول</span>
-                </div>
+                {loginError && <span className="text-xs text-red-300 font-bold text-center shadow-black drop-shadow-sm">كلمة المرور غير صحيحة</span>}
             </div>
+            <div className="mt-8 flex items-center gap-2 text-white/80 hover:text-white cursor-pointer text-sm" onClick={() => setSystemState('lock')}><Lock size={14} /><span>خيارات تسجيل الدخول</span></div>
         </div>
-    );
-  }
+    </div>
+  );
 
-  // Desktop
   return (
     <div 
       className={`h-screen w-screen overflow-hidden relative text-sm select-none ${isDarkMode ? 'dark' : ''}`}
       onClick={(e) => {
-        if (contextMenu) setContextMenu(null);
-        if (!(e.target as HTMLElement).closest('.flyout-trigger') && !(e.target as HTMLElement).closest('.flyout')) {
-          closeFlyouts();
-        }
+        if (!(e.target as HTMLElement).closest('.flyout-trigger') && !(e.target as HTMLElement).closest('.flyout')) closeFlyouts();
       }}
-      onContextMenu={(e) => handleContextMenu(e, 'desktop')}
     >
-      {/* Wallpaper */}
-      <div 
-        className="absolute inset-0 -z-10 bg-cover bg-center transition-all duration-500"
-        style={{ backgroundImage: `url(${wallpaper})` }}
+      {/* Desktop Layer */}
+      <Desktop 
+        wallpaper={wallpaper} 
+        isDark={isDarkMode} 
+        onOpenWindow={openWindow}
+        onOpenSettings={() => openWindow('settings')}
       />
-      <div className="absolute inset-0 bg-black/0 dark:bg-black/20 pointer-events-none transition-colors duration-300"></div>
 
-      {/* Desktop Icons */}
-      <div className="absolute top-0 right-0 h-[calc(100%-48px)] w-full p-2 grid grid-flow-col grid-rows-[repeat(auto-fill,100px)] gap-2 content-start items-start justify-start" style={{direction: 'rtl'}}>
-         <DesktopIcon appId="bin" name="سلة المحذوفات" onOpen={() => openWindow('bin')} />
-         <DesktopIcon appId="explorer" name="هذا الكمبيوتر" onOpen={() => openWindow('explorer')} />
-         <DesktopIcon appId="edge" name="Edge" onOpen={() => openWindow('edge')} />
-         <DesktopIcon appId="store" name="المتجر" onOpen={() => openWindow('store')} />
-         <DesktopIcon appId="media" name="ميديا بلاير" onOpen={() => openWindow('media')} />
+      {/* Toast Notifications */}
+      <div className="absolute bottom-16 right-4 flex flex-col gap-2 z-[9999] pointer-events-none">
+          {toasts.map(toast => (
+              <div key={toast.id} className={`w-80 bg-white dark:bg-[#2b2b2b] p-3 rounded-lg shadow-2xl border-r-4 border-l-0 animate-in slide-in-from-right pointer-events-auto
+                 ${toast.type === 'success' ? 'border-green-500' : toast.type === 'warning' ? 'border-orange-500' : 'border-blue-500'}
+              `}>
+                  <div className="flex justify-between items-start mb-1">
+                      <span className="font-bold text-gray-800 dark:text-white">{toast.title}</span>
+                      <button onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}><X size={14} className="opacity-50 hover:opacity-100" /></button>
+                  </div>
+                  <p className="text-xs opacity-80 text-gray-600 dark:text-gray-300">{toast.message}</p>
+              </div>
+          ))}
+          {toasts.length > 0 && (
+              <button onClick={() => setToasts([])} className="self-end bg-white/80 dark:bg-black/50 px-2 py-1 rounded text-xs pointer-events-auto hover:bg-white shadow">مسح الكل</button>
+          )}
       </div>
+
+      {/* Run Dialog */}
+      {showRunDialog && (
+          <div className="fixed inset-0 z-[9999] flex items-end left-4 bottom-20 justify-start pointer-events-none">
+              <div className="bg-white dark:bg-[#2b2b2b] dark:text-white border dark:border-[#444] rounded-lg shadow-xl p-4 w-96 pointer-events-auto animate-in fade-in zoom-in-95">
+                  <div className="flex justify-between mb-4">
+                      <h3 className="font-bold">تشغيل</h3>
+                      <button onClick={() => setShowRunDialog(false)}><X size={16} /></button>
+                  </div>
+                  <div className="flex gap-3 mb-4">
+                      <img src="https://img.icons8.com/color/48/console.png" alt="Run" className="w-8 h-8" />
+                      <p className="text-xs opacity-80">اكتب اسم برنامج أو مجلد أو مستند أو مورد إنترنت، وسيقوم Windows بفتحه لك.</p>
+                  </div>
+                  <div className="flex items-center gap-2 mb-4">
+                      <span className="text-xs font-bold">فتح:</span>
+                      <input 
+                          className="flex-1 border dark:border-[#555] dark:bg-[#1e1e1e] px-2 py-1 text-sm outline-blue-500" 
+                          autoFocus 
+                          value={runInput}
+                          onChange={(e) => setRunInput(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && executeRunCommand()}
+                      />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                      <button className="px-4 py-1 bg-gray-200 dark:bg-[#444] rounded border dark:border-[#555] text-xs" onClick={() => setShowRunDialog(false)}>إلغاء الأمر</button>
+                      <button className="px-4 py-1 bg-blue-600 text-white rounded border border-blue-700 text-xs" onClick={executeRunCommand}>موافق</button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* Windows Area */}
       <div className="absolute inset-0 pointer-events-none z-10">
         {windows.map(win => (
           <Window 
-            key={win.id}
-            state={win}
-            isActive={activeWindowId === win.id}
-            isDark={isDarkMode}
-            onClose={() => closeWindow(win.id)}
-            onMinimize={() => minimizeWindow(win.id)}
-            onMaximize={() => maximizeWindow(win.id)}
-            onFocus={() => focusWindow(win.id)}
-            onMove={(x, y) => updateWindowPosition(win.id, x, y)}
-            onResize={(w, h, x, y) => updateWindowSize(win.id, w, h, x, y)}
+            key={win.id} state={win} isActive={activeWindowId === win.id} isDark={isDarkMode}
+            onClose={() => closeWindow(win.id)} onMinimize={() => minimizeWindow(win.id)} onMaximize={() => maximizeWindow(win.id)}
+            onFocus={() => focusWindow(win.id)} onMove={(x, y) => updateWindowPosition(win.id, x, y)} onResize={(w, h, x, y) => updateWindowSize(win.id, w, h, x, y)}
             app={APPS[win.appId]}
           >
             {React.createElement(APPS[win.appId].component, { 
-                windowId: win.id, 
-                contentProps: win.contentProps,
-                fs: fileSystem,
-                setFs: setFileSystem,
-                isDark: isDarkMode,
-                toggleTheme: toggleTheme
+               windowId: win.id, 
+               contentProps: win.contentProps, 
+               fs: fs, 
+               setFs: setFs,
+               fsOperations: operations, 
+               onOpenWindow: openWindow,
+               onCloseWindow: () => closeWindow(win.id),
+               onAddToRecents: addToRecents, 
+               onSetWallpaper: handleSetWallpaper,
+               showToast: showToast,
+               onSystemAction: handleSystemAction,
+               isDark: isDarkMode, 
+               toggleTheme: toggleTheme 
             })}
           </Window>
         ))}
       </div>
 
-      {/* Flyouts */}
-      <StartMenu isOpen={startMenuOpen} onClose={() => setStartMenuOpen(false)} onOpenApp={openWindow} isDark={isDarkMode} />
+      {/* Flyouts & Taskbar */}
+      <StartMenu 
+        isOpen={startMenuOpen} 
+        isDark={isDarkMode} 
+        recentFiles={recentFiles} 
+        onClose={() => setStartMenuOpen(false)} 
+        onOpenApp={openWindow} 
+        onSystemAction={handleSystemAction}
+      />
       <ActionCenter isOpen={actionCenterOpen} isDark={isDarkMode} toggleTheme={toggleTheme} />
       <CalendarFlyout isOpen={calendarOpen} isDark={isDarkMode} />
-
-      {/* Taskbar */}
+      
       <Taskbar 
-        windows={windows}
-        activeWindowId={activeWindowId}
-        isDark={isDarkMode}
+        windows={windows} activeWindowId={activeWindowId} isDark={isDarkMode}
         onAppClick={(appId) => {
           const openApp = windows.find(w => w.appId === appId);
-          if (openApp) {
-            if (openApp.isMinimized || activeWindowId !== openApp.id) {
-              restoreWindow(openApp.id);
-            } else {
-              minimizeWindow(openApp.id);
-            }
-          } else {
-            openWindow(appId as AppId);
-          }
+          if (openApp) { (openApp.isMinimized || activeWindowId !== openApp.id) ? restoreWindow(openApp.id) : minimizeWindow(openApp.id); } 
+          else { openWindow(appId as AppId); }
         }}
-        onStartClick={toggleStartMenu}
-        onActionCenterClick={toggleActionCenter}
-        onClockClick={toggleCalendar}
-        onMinimizeAll={() => windows.forEach(w => minimizeWindow(w.id))}
+        onStartClick={toggleStartMenu} onActionCenterClick={toggleActionCenter} onClockClick={toggleCalendar} onMinimizeAll={() => windows.forEach(w => minimizeWindow(w.id))}
       />
-
-      {/* Context Menu */}
-      {contextMenu && (
-        <ContextMenu 
-          x={contextMenu.x} 
-          y={contextMenu.y} 
-          type={contextMenu.type} 
-          isDark={isDarkMode}
-          onRefresh={() => window.location.reload()}
-          onPersonalize={() => openWindow('settings')}
-        />
-      )}
     </div>
   );
+  
+  function addToRecents(file: RecentFile) {
+      setRecentFiles(prev => {
+          const filtered = prev.filter(f => f.name !== file.name);
+          return [file, ...filtered].slice(0, 4);
+      });
+  }
 }

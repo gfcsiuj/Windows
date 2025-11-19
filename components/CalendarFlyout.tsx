@@ -8,11 +8,19 @@ interface CalendarFlyoutProps {
 
 export const CalendarFlyout: React.FC<CalendarFlyoutProps> = ({ isOpen, isDark }) => {
   const date = new Date();
-  const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  const currentYear = date.getFullYear();
+  const currentMonth = date.getMonth();
+  const today = date.getDate();
+
+  // Get total days in current month (0th day of next month gets last day of current)
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  
+  // Get starting day of the week (0-6, Sunday-Saturday)
+  const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
   
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const padding = Array.from({ length: firstDay }, (_, i) => i);
+  // Padding for grid
+  const padding = Array.from({ length: firstDayIndex }, (_, i) => i);
 
   const bgClass = isDark ? 'bg-[#202020]/95 border-[#333] text-white' : 'bg-[#f3f3f3]/90 border-white/40 text-gray-800';
   const hoverClass = isDark ? 'hover:bg-white/10' : 'hover:bg-gray-200';
@@ -40,12 +48,12 @@ export const CalendarFlyout: React.FC<CalendarFlyoutProps> = ({ isOpen, isDark }
       <div className="grid grid-cols-7 text-center text-sm gap-1">
         {padding.map(i => <span key={`pad-${i}`}></span>)}
         {days.map(d => {
-            const isToday = d === date.getDate();
+            const isToday = d === today;
             return (
                 <span 
                   key={d} 
-                  className={`w-8 h-8 flex items-center justify-center rounded-full cursor-pointer transition
-                    ${isToday ? 'bg-blue-600 text-white' : `${hoverClass} opacity-90`}
+                  className={`w-8 h-8 flex items-center justify-center rounded-full cursor-pointer transition text-xs
+                    ${isToday ? 'bg-blue-600 text-white font-bold' : `${hoverClass} opacity-90`}
                   `}
                 >
                   {d}
