@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { Wifi, Bluetooth, Plane, Moon, Sun, Volume2, Settings, BatteryCharging } from 'lucide-react';
+import { Wifi, Bluetooth, Plane, Moon, Sun, Volume2, Settings, BatteryCharging, Eye } from 'lucide-react';
+import { BatteryState } from '../types';
 
 interface ActionCenterProps {
   isOpen: boolean;
   isDark?: boolean;
   toggleTheme?: () => void;
+  nightLight?: boolean;
+  setNightLight?: (enabled: boolean) => void;
+  battery?: BatteryState;
 }
 
-export const ActionCenter: React.FC<ActionCenterProps> = ({ isOpen, isDark, toggleTheme }) => {
+export const ActionCenter: React.FC<ActionCenterProps> = ({ isOpen, isDark, toggleTheme, nightLight, setNightLight, battery }) => {
   const [brightness, setBrightness] = useState(80);
   const [volume, setVolume] = useState(60);
   
@@ -15,7 +19,8 @@ export const ActionCenter: React.FC<ActionCenterProps> = ({ isOpen, isDark, togg
   const [wifi, setWifi] = useState(true);
   const [bluetooth, setBluetooth] = useState(true);
   const [airplane, setAirplane] = useState(false);
-  const [batterySaver, setBatterySaver] = useState(false);
+  // Battery Saver removed in favor of Night Light to keep grid balanced, 
+  // as Night Light is a functional prop passed from App.
 
   const bgClass = isDark ? 'bg-[#202020]/95 border-[#333] text-white' : 'bg-[#f3f3f3]/90 border-white/40 text-gray-800';
   const sliderTrackClass = isDark ? 'bg-[#444]' : 'bg-gray-300';
@@ -44,8 +49,8 @@ export const ActionCenter: React.FC<ActionCenterProps> = ({ isOpen, isDark, togg
             isDark={isDark} 
          />
          <QuickToggle 
-            icon={BatteryCharging} label="توفير الطاقة" 
-            active={batterySaver} onClick={() => setBatterySaver(!batterySaver)} 
+            icon={Eye} label="ضوء ليلي" 
+            active={nightLight} onClick={() => setNightLight && setNightLight(!nightLight)} 
             isDark={isDark} 
          />
          <QuickToggle 
@@ -69,6 +74,16 @@ export const ActionCenter: React.FC<ActionCenterProps> = ({ isOpen, isDark, togg
             isDark={isDark} trackClass={sliderTrackClass} 
          />
       </div>
+      
+      {battery && (
+        <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-xs opacity-70">
+           <span>{battery.level.toFixed(0)}% {battery.charging ? '(جاري الشحن)' : ''}</span>
+           <div className="flex items-center gap-2">
+               <Settings size={14} className="cursor-pointer hover:opacity-100" />
+               <span>تحرير</span>
+           </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { APPS } from './constants';
-import { WindowState, AppId, RecentFile, ToastNotification } from './types';
+import { WindowState, AppId, RecentFile, ToastNotification, BatteryState } from './types';
 import { Taskbar } from './components/Taskbar';
 import { Window } from './components/Window';
 import { Desktop } from './components/Desktop';
@@ -17,15 +17,27 @@ export default function App() {
   const [systemState, setSystemState] = useState<SystemState>('boot');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState(false);
+  // Premium Abstract Liquid Wallpaper
   const [wallpaper, setWallpaper] = useState(() => {
-     return localStorage.getItem('win11_wallpaper') || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564';
+     return localStorage.getItem('win11_wallpaper') || 'https://images.unsplash.com/photo-1614850523060-8da1d56fa167?q=80&w=2670&auto=format&fit=crop';
   });
+  
+  // --- Personalization ---
+  const [accentColor, setAccentColor] = useState('blue'); 
+  const [nightLight, setNightLight] = useState(false);
+  const [taskbarAlign, setTaskbarAlign] = useState<'center' | 'left'>('center');
+  const [battery, setBattery] = useState<BatteryState>({ level: 100, charging: true });
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   // --- Desktop State ---
   const [windows, setWindows] = useState<WindowState[]>([]);
   const [activeWindowId, setActiveWindowId] = useState<string | null>(null);
   const [zIndexCounter, setZIndexCounter] = useState(100);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  // Default to Dark Mode for the "Pro" aesthetic
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+      const saved = localStorage.getItem('win11_theme');
+      return saved ? saved === 'dark' : true;
+  });
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
   const [showRunDialog, setShowRunDialog] = useState(false);
@@ -41,9 +53,26 @@ export default function App() {
 
   // --- Initialization ---
   useEffect(() => {
-    const savedTheme = localStorage.getItem('win11_theme');
-    if (savedTheme === 'dark') setIsDarkMode(true);
-    setTimeout(() => setSystemState('lock'), 2500);
+    // Boot sound simulation
+    const bootTimer = setTimeout(() => {
+        setSystemState('lock');
+    }, 2500); // Slightly faster boot for UX
+
+    // Network Status
+    window.addEventListener('online', () => setIsOnline(true));
+    window.addEventListener('offline', () => setIsOnline(false));
+
+    // Battery API
+    if ('getBattery' in navigator) {
+        (navigator as any).getBattery().then((bat: any) => {
+            const updateBat = () => setBattery({ level: bat.level * 100, charging: bat.charging });
+            updateBat();
+            bat.addEventListener('levelchange', updateBat);
+            bat.addEventListener('chargingchange', updateBat);
+        });
+    }
+
+    return () => clearTimeout(bootTimer);
   }, []);
 
   // --- Persistence ---
@@ -52,8 +81,11 @@ export default function App() {
   // --- Global Shortcuts ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isWin = e.key === 'Meta' || e.key === 'OS';
+      const isCtrl = e.ctrlKey;
+
       // Win Key
-      if (e.key === 'Meta' || e.key === 'OS') {
+      if (isWin && !e.shiftKey && !e.altKey && !e.ctrlKey) {
         e.preventDefault();
         if (systemState === 'desktop') {
             setStartMenuOpen(prev => !prev);
@@ -63,7 +95,7 @@ export default function App() {
       }
       
       // Win + R (Run)
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'r') {
+      if ((isWin || isCtrl) && e.key.toLowerCase() === 'r') {
           e.preventDefault();
           if (systemState === 'desktop') {
             setShowRunDialog(true);
@@ -71,21 +103,37 @@ export default function App() {
           }
       }
 
+      // Win + E (Explorer)
+      if (isWin && e.key.toLowerCase() === 'e') {
+          e.preventDefault();
+          openWindow('explorer');
+      }
+
+      // Win + I (Settings)
+      if (isWin && e.key.toLowerCase() === 'i') {
+          e.preventDefault();
+          openWindow('settings');
+      }
+
+      // Win + A (Action Center)
+      if (isWin && e.key.toLowerCase() === 'a') {
+          e.preventDefault();
+          toggleActionCenter();
+      }
+
       // Win + L (Lock)
-      if ((e.metaKey) && e.key.toLowerCase() === 'l') {
+      if ((isWin) && e.key.toLowerCase() === 'l') {
           e.preventDefault();
           setSystemState('lock');
       }
 
       // Win + D (Show Desktop)
-      if ((e.metaKey) && e.key.toLowerCase() === 'd') {
+      if ((isWin) && e.key.toLowerCase() === 'd') {
           e.preventDefault();
           const allMinimized = windows.every(w => w.isMinimized);
           if (allMinimized) {
-              // Restore all
               setWindows(prev => prev.map(w => ({ ...w, isMinimized: false })));
           } else {
-              // Minimize all
               setWindows(prev => prev.map(w => ({ ...w, isMinimized: true })));
           }
       }
@@ -93,9 +141,7 @@ export default function App() {
       // Alt + F4 (Close Window)
       if (e.altKey && e.key === 'F4') {
           e.preventDefault();
-          if (activeWindowId) {
-              closeWindow(activeWindowId);
-          }
+          if (activeWindowId) closeWindow(activeWindowId);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -118,38 +164,34 @@ export default function App() {
   };
 
   // --- System Actions ---
-  const handleSystemAction = (action: 'shutdown' | 'restart' | 'reset' | 'bsod' | 'lock') => {
+  const handleSystemAction = (action: 'shutdown' | 'restart' | 'reset' | 'bsod' | 'lock' | 'sleep') => {
       if (action === 'reset') {
           localStorage.clear();
           operations.resetFileSystem();
           window.location.reload();
           return;
       }
-      if (action === 'bsod') {
-          setSystemState('bsod');
-          return;
-      }
-      if (action === 'lock') {
-          setSystemState('lock');
-          return;
-      }
+      if (action === 'bsod') { setSystemState('bsod'); return; }
+      if (action === 'lock') { setSystemState('lock'); return; }
+      if (action === 'sleep') { setSystemState('lock'); return; }
+      
       setSystemState('shutdown');
       setTimeout(() => {
-          if (action === 'restart') {
-              window.location.reload();
-          }
+          if (action === 'restart') window.location.reload();
       }, 3000);
   };
 
   const executeRunCommand = () => {
       setShowRunDialog(false);
       const cmd = runInput.trim().toLowerCase();
-      if (cmd === 'cmd') openWindow('terminal');
+      if (APPS[cmd]) openWindow(cmd as AppId);
+      else if (cmd === 'cmd') openWindow('terminal');
       else if (cmd === 'calc') openWindow('calculator');
-      else if (cmd === 'notepad') openWindow('notepad');
-      else if (cmd === 'explorer') openWindow('explorer');
-      else if (cmd === 'edge' || cmd === 'www') openWindow('edge');
-      else if (cmd === 'settings') openWindow('settings');
+      else if (cmd === 'www' || cmd === 'browser') openWindow('edge');
+      else if (cmd === 'paint' || cmd === 'mspaint') openWindow('paint');
+      else if (cmd === 'code') openWindow('vscode');
+      else if (cmd === 'game' || cmd === 'tictactoe') openWindow('tictactoe');
+      else if (cmd === 'control') openWindow('settings');
       else showToast('خطأ', `يتعذر على ويندوز العثور على '${cmd}'. تأكد من كتابة الاسم بشكل صحيح.`);
       setRunInput('');
   };
@@ -157,8 +199,12 @@ export default function App() {
   // --- Window Actions ---
   const openWindow = (appId: AppId, contentProps?: any) => {
     const app = APPS[appId];
+    if (!app) return;
+    
     const existingWindow = windows.find(w => w.appId === appId);
-    if (existingWindow && (appId === 'settings' || appId === 'store' || appId === 'calculator')) {
+    const singleInstanceApps = ['settings', 'store', 'calculator', 'camera', 'taskmanager', 'media', 'tictactoe'];
+    
+    if (existingWindow && singleInstanceApps.includes(appId)) {
       restoreWindow(existingWindow.id);
       return;
     }
@@ -211,7 +257,7 @@ export default function App() {
       <div className="h-screen w-screen bg-[#0078d7] flex flex-col p-20 text-white font-segoe cursor-none select-none">
           <div className="text-[120px] mb-8">:(</div>
           <div className="text-2xl mb-8">واجه جهازك مشكلة ويجب إعادة تشغيله. نحن نقوم بجمع بعض المعلومات عن الخطأ، ثم سنقوم بإعادة التشغيل لك.</div>
-          <div className="text-2xl mb-16">20% مكتمل</div>
+          <div className="text-2xl mb-16">100% مكتمل</div>
           <div className="flex items-center gap-4">
               <div className="w-24 h-24 bg-white p-1"><div className="w-full h-full bg-black"></div></div>
               <div className="text-sm">
@@ -239,23 +285,26 @@ export default function App() {
   
   if (systemState === 'lock') return (
       <div className="h-screen w-screen bg-cover bg-center flex flex-col items-center pt-32 text-white transition-all duration-500" style={{ backgroundImage: `url(${wallpaper})` }} onClick={() => setSystemState('login')}>
-         <div className="text-8xl font-light mb-4 select-none animate-in fade-in zoom-in duration-500 drop-shadow-md">{new Date().toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', hour12: false})}</div>
+         <div className="text-8xl font-light mb-4 select-none animate-in fade-in zoom-in duration-500 drop-shadow-2xl font-sans tracking-tighter">{new Date().toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', hour12: false})}</div>
          <div className="text-3xl font-medium select-none drop-shadow-md">{new Date().toLocaleDateString('ar-EG', {weekday: 'long', day: 'numeric', month: 'long'})}</div>
+         <div className="mt-auto mb-12 text-white/80 text-sm animate-pulse">اضغط أي مفتاح لفتح القفل</div>
       </div>
   );
   
   if (systemState === 'login') return (
-    <div className="h-screen w-screen bg-cover bg-center flex flex-col items-center justify-center backdrop-blur-xl" style={{ backgroundImage: `url(${wallpaper})` }}>
-        <div className="absolute inset-0 bg-black/30 backdrop-blur-md"></div>
+    <div className="h-screen w-screen bg-cover bg-center flex flex-col items-center justify-center" style={{ backgroundImage: `url(${wallpaper})` }}>
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-md transition-all duration-1000"></div>
         <div className={`z-10 flex flex-col items-center gap-6 animate-fadeIn ${loginError ? 'animate-shake' : ''}`}>
-            <div className="w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center border-4 border-white/20 shadow-lg"><User size={64} className="text-gray-500" /></div>
-            <div className="text-2xl font-bold text-white">Admin</div>
+            <div className="w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center border-4 border-white/20 shadow-2xl overflow-hidden">
+                <img src="https://cdn-icons-png.flaticon.com/512/4333/4333609.png" alt="User" className="w-full h-full object-cover" />
+            </div>
+            <div className="text-2xl font-bold text-white">Senior Developer</div>
             <div className="flex flex-col gap-2 w-64">
-                <div className="flex bg-black/30 backdrop-blur-sm rounded border-b-2 border-white/50 focus-within:border-blue-400 transition">
+                <div className={`flex bg-black/30 backdrop-blur-lg rounded border-b-2 ${loginError ? 'border-red-500' : 'border-white/50'} focus-within:border-blue-400 transition`}>
                     <input type="password" placeholder="كلمة المرور" className="flex-1 bg-transparent text-white px-3 py-2 outline-none placeholder-gray-300 text-sm" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()} autoFocus />
                     <button className="px-3 hover:bg-white/10" onClick={handleLogin}><ArrowRight className="text-white" size={20} /></button>
                 </div>
-                {loginError && <span className="text-xs text-red-300 font-bold text-center shadow-black drop-shadow-sm">كلمة المرور غير صحيحة</span>}
+                {loginError && <span className="text-xs text-white font-bold text-center shadow-black drop-shadow-sm bg-red-500/80 rounded py-1">كلمة المرور غير صحيحة</span>}
             </div>
             <div className="mt-8 flex items-center gap-2 text-white/80 hover:text-white cursor-pointer text-sm" onClick={() => setSystemState('lock')}><Lock size={14} /><span>خيارات تسجيل الدخول</span></div>
         </div>
@@ -269,6 +318,9 @@ export default function App() {
         if (!(e.target as HTMLElement).closest('.flyout-trigger') && !(e.target as HTMLElement).closest('.flyout')) closeFlyouts();
       }}
     >
+      {/* Night Light Overlay */}
+      {nightLight && <div className="absolute inset-0 z-[99999] bg-orange-500/20 pointer-events-none mix-blend-multiply"></div>}
+
       {/* Desktop Layer */}
       <Desktop 
         wallpaper={wallpaper} 
@@ -280,7 +332,7 @@ export default function App() {
       {/* Toast Notifications */}
       <div className="absolute bottom-16 right-4 flex flex-col gap-2 z-[9999] pointer-events-none">
           {toasts.map(toast => (
-              <div key={toast.id} className={`w-80 bg-white dark:bg-[#2b2b2b] p-3 rounded-lg shadow-2xl border-r-4 border-l-0 animate-in slide-in-from-right pointer-events-auto
+              <div key={toast.id} className={`w-80 bg-white/90 dark:bg-[#2b2b2b]/90 p-4 rounded-lg shadow-2xl border-r-4 border-l-0 animate-in slide-in-from-right pointer-events-auto backdrop-blur-xl
                  ${toast.type === 'success' ? 'border-green-500' : toast.type === 'warning' ? 'border-orange-500' : 'border-blue-500'}
               `}>
                   <div className="flex justify-between items-start mb-1">
@@ -290,27 +342,24 @@ export default function App() {
                   <p className="text-xs opacity-80 text-gray-600 dark:text-gray-300">{toast.message}</p>
               </div>
           ))}
-          {toasts.length > 0 && (
-              <button onClick={() => setToasts([])} className="self-end bg-white/80 dark:bg-black/50 px-2 py-1 rounded text-xs pointer-events-auto hover:bg-white shadow">مسح الكل</button>
-          )}
       </div>
 
       {/* Run Dialog */}
       {showRunDialog && (
           <div className="fixed inset-0 z-[9999] flex items-end left-4 bottom-20 justify-start pointer-events-none">
-              <div className="bg-white dark:bg-[#2b2b2b] dark:text-white border dark:border-[#444] rounded-lg shadow-xl p-4 w-96 pointer-events-auto animate-in fade-in zoom-in-95">
+              <div className="bg-white/95 dark:bg-[#2b2b2b]/95 backdrop-blur-xl dark:text-white border dark:border-[#444] rounded-lg shadow-2xl p-4 w-96 pointer-events-auto animate-in fade-in zoom-in-95 ring-1 ring-black/5">
                   <div className="flex justify-between mb-4">
                       <h3 className="font-bold">تشغيل</h3>
                       <button onClick={() => setShowRunDialog(false)}><X size={16} /></button>
                   </div>
                   <div className="flex gap-3 mb-4">
                       <img src="https://img.icons8.com/color/48/console.png" alt="Run" className="w-8 h-8" />
-                      <p className="text-xs opacity-80">اكتب اسم برنامج أو مجلد أو مستند أو مورد إنترنت، وسيقوم Windows بفتحه لك.</p>
+                      <div className="text-xs opacity-80 leading-relaxed">اكتب اسم برنامج أو مجلد أو مستند أو مورد إنترنت، وسيقوم Windows بفتحه لك.</div>
                   </div>
                   <div className="flex items-center gap-2 mb-4">
                       <span className="text-xs font-bold">فتح:</span>
                       <input 
-                          className="flex-1 border dark:border-[#555] dark:bg-[#1e1e1e] px-2 py-1 text-sm outline-blue-500" 
+                          className="flex-1 border dark:border-[#555] dark:bg-[#1e1e1e] px-2 py-1 text-sm outline-blue-500 rounded-sm" 
                           autoFocus 
                           value={runInput}
                           onChange={(e) => setRunInput(e.target.value)}
@@ -318,8 +367,8 @@ export default function App() {
                       />
                   </div>
                   <div className="flex justify-end gap-2">
-                      <button className="px-4 py-1 bg-gray-200 dark:bg-[#444] rounded border dark:border-[#555] text-xs" onClick={() => setShowRunDialog(false)}>إلغاء الأمر</button>
-                      <button className="px-4 py-1 bg-blue-600 text-white rounded border border-blue-700 text-xs" onClick={executeRunCommand}>موافق</button>
+                      <button className="px-6 py-1 bg-gray-200 dark:bg-[#444] rounded-sm border dark:border-[#555] text-xs hover:bg-gray-300" onClick={() => setShowRunDialog(false)}>إلغاء الأمر</button>
+                      <button className="px-6 py-1 bg-blue-600 text-white rounded-sm border border-blue-700 text-xs hover:bg-blue-700 shadow-sm" onClick={executeRunCommand}>موافق</button>
                   </div>
               </div>
           </div>
@@ -338,7 +387,7 @@ export default function App() {
                windowId: win.id, 
                contentProps: win.contentProps, 
                fs: fs, 
-               setFs: setFs,
+               setFs: setFs, 
                fsOperations: operations, 
                onOpenWindow: openWindow,
                onCloseWindow: () => closeWindow(win.id),
@@ -347,7 +396,16 @@ export default function App() {
                showToast: showToast,
                onSystemAction: handleSystemAction,
                isDark: isDarkMode, 
-               toggleTheme: toggleTheme 
+               toggleTheme: toggleTheme,
+               accentColor: accentColor,
+               setAccentColor: setAccentColor,
+               nightLight: nightLight,
+               setNightLight: setNightLight,
+               taskbarAlign: taskbarAlign,
+               setTaskbarAlign: setTaskbarAlign,
+               openWindows: windows,
+               battery: battery,
+               isOnline: isOnline
             })}
           </Window>
         ))}
@@ -361,12 +419,20 @@ export default function App() {
         onClose={() => setStartMenuOpen(false)} 
         onOpenApp={openWindow} 
         onSystemAction={handleSystemAction}
+        align={taskbarAlign}
       />
-      <ActionCenter isOpen={actionCenterOpen} isDark={isDarkMode} toggleTheme={toggleTheme} />
+      <ActionCenter 
+         isOpen={actionCenterOpen} 
+         isDark={isDarkMode} 
+         toggleTheme={toggleTheme} 
+         nightLight={nightLight} 
+         setNightLight={setNightLight} 
+         battery={battery}
+      />
       <CalendarFlyout isOpen={calendarOpen} isDark={isDarkMode} />
       
       <Taskbar 
-        windows={windows} activeWindowId={activeWindowId} isDark={isDarkMode}
+        windows={windows} activeWindowId={activeWindowId} isDark={isDarkMode} align={taskbarAlign} battery={battery} isOnline={isOnline}
         onAppClick={(appId) => {
           const openApp = windows.find(w => w.appId === appId);
           if (openApp) { (openApp.isMinimized || activeWindowId !== openApp.id) ? restoreWindow(openApp.id) : minimizeWindow(openApp.id); } 
@@ -380,7 +446,7 @@ export default function App() {
   function addToRecents(file: RecentFile) {
       setRecentFiles(prev => {
           const filtered = prev.filter(f => f.name !== file.name);
-          return [file, ...filtered].slice(0, 4);
+          return [file, ...filtered].slice(0, 6);
       });
   }
 }

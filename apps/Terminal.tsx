@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppProps } from '../types';
 
-export const TerminalApp: React.FC<AppProps> = ({ fs, fsOperations, onOpenWindow, onCloseWindow, onSystemAction, windowId }) => {
+export const TerminalApp: React.FC<AppProps> = ({ fs, fsOperations, onOpenWindow, onCloseWindow, onSystemAction, windowId, openWindows }) => {
   const [currentPath, setCurrentPath] = useState<string[]>(['root']);
   const [history, setHistory] = useState<string[]>(['Microsoft Windows [Version 11.0.22621.1]', '(c) Microsoft Corporation. All rights reserved.', '']);
   const [input, setInput] = useState('');
@@ -94,17 +94,39 @@ export const TerminalApp: React.FC<AppProps> = ({ fs, fsOperations, onOpenWindow
         case 'matrix': setIsMatrix(true); setTextColor('text-green-500'); break;
         case 'open':
             const app = args[0]?.toLowerCase();
-            if (app === 'notepad') onOpenWindow?.('notepad');
-            else if (app === 'edge') onOpenWindow?.('edge');
-            else if (app === 'calc') onOpenWindow?.('calculator');
-            else if (app === 'settings') onOpenWindow?.('settings');
-            else setHistory(prev => [...prev, `Command '${app}' not found.`]);
+            if (app) onOpenWindow?.(app as any);
+            else setHistory(prev => [...prev, `Usage: open <app_name>`]);
             break;
         case 'echo': setHistory(prev => [...prev, args.join(' ')]); break;
         case 'ver': setHistory(prev => [...prev, 'Microsoft Windows [Version 11.0.22621.1]']); break;
         case 'time': setHistory(prev => [...prev, `Current time is: ${new Date().toLocaleTimeString()}`]); break;
         case 'bsod': onSystemAction?.('bsod'); break;
         case 'whoami': setHistory(prev => [...prev, 'windows\\admin']); break;
+        case 'ipconfig': 
+             setHistory(prev => [...prev, 
+                'Windows IP Configuration', '', 
+                'Ethernet adapter Ethernet:', '',
+                '   Connection-specific DNS Suffix  . : localdomain',
+                '   IPv4 Address. . . . . . . . . . . : 192.168.1.14',
+                '   Subnet Mask . . . . . . . . . . . : 255.255.255.0',
+                '   Default Gateway . . . . . . . . . : 192.168.1.1'
+             ]); 
+             break;
+        case 'ps':
+        case 'tasklist':
+             const tasks = openWindows?.map(w => `${w.title.padEnd(25)} ${w.id.split('-')[1]}`).join('\n') || 'No active tasks';
+             setHistory(prev => [...prev, 'Image Name                   PID', '========================= ========', tasks]);
+             break;
+        case 'kill':
+             const pid = args[0];
+             const winToKill = openWindows?.find(w => w.id.includes(pid));
+             if (winToKill) {
+                 onCloseWindow && onCloseWindow(winToKill.id);
+                 setHistory(prev => [...prev, `SUCCESS: Sent termination signal to process with PID ${pid}.`]);
+             } else {
+                 setHistory(prev => [...prev, `ERROR: The process "${pid}" not found.`]);
+             }
+             break;
         case 'date': setHistory(prev => [...prev, new Date().toDateString()]); break;
         case 'dir':
         case 'ls':

@@ -143,19 +143,19 @@ export const Window: React.FC<WindowProps> = ({
         opacity: state.isMinimized ? 0 : 1
       };
 
-  const activeShadow = isActive ? 'shadow-[0_20px_50px_rgba(0,0,0,0.3)]' : 'shadow-[0_4px_10px_rgba(0,0,0,0.1)]';
-  const activeBorder = isDark ? (isActive ? 'border-[#555]' : 'border-[#333]') : (isActive ? 'border-gray-300' : 'border-gray-200');
-  // Enhanced Glassmorphism
-  const baseBg = isDark ? 'bg-[#202020]/95 backdrop-blur-xl' : 'bg-[#f9f9f9]/95 backdrop-blur-xl';
-  const titleBarBg = isActive ? (isDark ? 'bg-transparent' : 'bg-transparent') : (isDark ? 'bg-[#2b2b2b]/30' : 'bg-[#f3f3f3]/30');
+  const activeShadow = isActive ? 'shadow-[0_20px_50px_rgba(0,0,0,0.4)]' : 'shadow-[0_4px_15px_rgba(0,0,0,0.15)]';
+  const activeBorder = isDark ? (isActive ? 'border-[#555]/50' : 'border-[#333]/30') : (isActive ? 'border-white/60' : 'border-white/30');
+  // Premium Glassmorphism: Higher blur, noise texture simulation via bg opacity
+  const baseBg = isDark ? 'bg-[#1c1c1c]/85 backdrop-blur-2xl' : 'bg-[#f9f9f9]/85 backdrop-blur-2xl';
+  const titleBarBg = 'bg-transparent'; // Let the blur shine through
 
   if (state.isMinimized && !isActive) return null;
 
   return (
     <div 
       className={`absolute flex flex-col overflow-visible transition-[width,height,transform,opacity] duration-200 ease-out pointer-events-auto 
-                 ${state.isMaximized ? '' : 'rounded-lg border'} ${activeShadow} ${activeBorder} ${baseBg}
-                 ${isOpening ? 'animate-window-open' : ''}
+                 ${state.isMaximized ? '' : 'rounded-xl border'} ${activeShadow} ${activeBorder} ${baseBg}
+                 ${isOpening ? 'animate-window-open' : ''} ring-1 ring-white/5
                  `}
       style={{ ...style, zIndex: state.zIndex }}
       onMouseDown={onFocus}
@@ -174,25 +174,26 @@ export const Window: React.FC<WindowProps> = ({
       )}
 
       <div 
-        className={`h-9 flex justify-between items-center select-none shrink-0 transition-colors duration-200
-            ${state.isMaximized ? '' : 'rounded-t-lg'} ${titleBarBg}
+        className={`h-10 flex justify-between items-center select-none shrink-0 transition-colors duration-200
+            ${state.isMaximized ? '' : 'rounded-t-xl'} ${titleBarBg}
             ${isActive ? 'text-opacity-100' : 'text-opacity-50'}
+            border-b border-white/5
         `}
         onMouseDown={handleMouseDown}
         onDoubleClick={onMaximize}
       >
-        <div className={`flex items-center gap-3 px-3 text-xs font-semibold pointer-events-none ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
+        <div className={`flex items-center gap-3 px-4 text-xs font-semibold pointer-events-none ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
           {app.icon && React.createElement(app.icon, { size: 14, className: app.color })}
-          <span>{state.title}</span>
+          <span className="font-medium tracking-wide">{state.title}</span>
         </div>
 
-        <div className="flex flex-row-reverse h-full items-start">
-          <button className="w-12 h-9 flex items-center justify-center hover:bg-[#e81123] group transition-colors rounded-tr-lg" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+        <div className="flex flex-row-reverse h-full items-start px-2 pt-1 gap-1">
+          <button className="w-8 h-8 flex items-center justify-center hover:bg-[#e81123] group transition-all rounded-md" onClick={(e) => { e.stopPropagation(); onClose(); }}>
             <X size={14} className={`group-hover:text-white ${isDark ? 'text-white' : 'text-black'}`} />
           </button>
 
           <div className="relative" onMouseEnter={() => handleSnapHover(true)} onMouseLeave={() => handleSnapHover(false)}>
-              <button className={`w-12 h-9 flex items-center justify-center transition-colors ${isDark ? 'hover:bg-white/10 text-white' : 'hover:bg-gray-200 text-black'}`} onClick={(e) => { e.stopPropagation(); onMaximize(); }}>
+              <button className={`w-8 h-8 flex items-center justify-center transition-all rounded-md ${isDark ? 'hover:bg-white/10 text-white' : 'hover:bg-gray-200 text-black'}`} onClick={(e) => { e.stopPropagation(); onMaximize(); }}>
                 {state.isMaximized ? <Copy size={12} /> : <Square size={12} />}
               </button>
               {showSnapMenu && !state.isMaximized && (
@@ -213,13 +214,13 @@ export const Window: React.FC<WindowProps> = ({
               )}
           </div>
 
-          <button className={`w-12 h-9 flex items-center justify-center transition-colors ${isDark ? 'hover:bg-white/10 text-white' : 'hover:bg-gray-200 text-black'}`} onClick={(e) => { e.stopPropagation(); onMinimize(); }}>
+          <button className={`w-8 h-8 flex items-center justify-center transition-all rounded-md ${isDark ? 'hover:bg-white/10 text-white' : 'hover:bg-gray-200 text-black'}`} onClick={(e) => { e.stopPropagation(); onMinimize(); }}>
             <Minus size={14} />
           </button>
         </div>
       </div>
       
-      <div className={`flex-1 relative overflow-hidden ${isDark ? 'bg-[#1a1a1a]/90' : 'bg-white/95'}`}>
+      <div className={`flex-1 relative overflow-hidden ${isDark ? 'bg-[#1a1a1a]/90' : 'bg-white/95'} rounded-b-xl`}>
         {children}
       </div>
     </div>

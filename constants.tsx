@@ -9,7 +9,11 @@ import {
   Image as ImageIcon, 
   Terminal, 
   Trash2,
-  PlayCircle
+  PlayCircle,
+  Palette,
+  Camera,
+  Activity,
+  Gamepad2
 } from 'lucide-react';
 import { AppConfig } from './types';
 import { Explorer } from './apps/Explorer';
@@ -22,6 +26,10 @@ import { SettingsApp } from './apps/Settings';
 import { Photos } from './apps/Photos';
 import { TerminalApp } from './apps/Terminal';
 import { MediaPlayer } from './apps/MediaPlayer';
+import { Paint } from './apps/Paint';
+import { CameraApp } from './apps/Camera';
+import { TaskManager } from './apps/TaskManager';
+import { TicTacToe } from './apps/TicTacToe';
 
 export const APPS: Record<string, AppConfig> = {
   explorer: {
@@ -30,8 +38,8 @@ export const APPS: Record<string, AppConfig> = {
     icon: FolderOpen,
     color: 'text-yellow-500',
     component: Explorer,
-    defaultWidth: 800,
-    defaultHeight: 500
+    defaultWidth: 900,
+    defaultHeight: 550
   },
   edge: {
     id: 'edge',
@@ -39,8 +47,8 @@ export const APPS: Record<string, AppConfig> = {
     icon: Globe,
     color: 'text-sky-500',
     component: Edge,
-    defaultWidth: 900,
-    defaultHeight: 600
+    defaultWidth: 1000,
+    defaultHeight: 650
   },
   store: {
     id: 'store',
@@ -57,8 +65,8 @@ export const APPS: Record<string, AppConfig> = {
     icon: Settings,
     color: 'text-gray-600',
     component: SettingsApp,
-    defaultWidth: 800,
-    defaultHeight: 500
+    defaultWidth: 900,
+    defaultHeight: 600
   },
   notepad: {
     id: 'notepad',
@@ -66,8 +74,8 @@ export const APPS: Record<string, AppConfig> = {
     icon: StickyNote,
     color: 'text-blue-400',
     component: Notepad,
-    defaultWidth: 600,
-    defaultHeight: 400
+    defaultWidth: 650,
+    defaultHeight: 500
   },
   calculator: {
     id: 'calculator',
@@ -76,7 +84,34 @@ export const APPS: Record<string, AppConfig> = {
     color: 'text-green-500',
     component: CalculatorApp,
     defaultWidth: 320,
-    defaultHeight: 480
+    defaultHeight: 520
+  },
+  paint: {
+    id: 'paint',
+    name: 'الرسام',
+    icon: Palette,
+    color: 'text-pink-500',
+    component: Paint,
+    defaultWidth: 900,
+    defaultHeight: 650
+  },
+  camera: {
+    id: 'camera',
+    name: 'الكاميرا',
+    icon: Camera,
+    color: 'text-gray-500',
+    component: CameraApp,
+    defaultWidth: 700,
+    defaultHeight: 500
+  },
+  taskmanager: {
+    id: 'taskmanager',
+    name: 'إدارة المهام',
+    icon: Activity,
+    color: 'text-emerald-500',
+    component: TaskManager,
+    defaultWidth: 700,
+    defaultHeight: 550
   },
   vscode: {
     id: 'vscode',
@@ -84,8 +119,8 @@ export const APPS: Record<string, AppConfig> = {
     icon: Code2,
     color: 'text-blue-600',
     component: VSCode,
-    defaultWidth: 900,
-    defaultHeight: 600
+    defaultWidth: 1000,
+    defaultHeight: 700
   },
   photos: {
     id: 'photos',
@@ -93,8 +128,8 @@ export const APPS: Record<string, AppConfig> = {
     icon: ImageIcon,
     color: 'text-purple-500',
     component: Photos,
-    defaultWidth: 700,
-    defaultHeight: 500
+    defaultWidth: 800,
+    defaultHeight: 600
   },
   media: {
     id: 'media',
@@ -102,8 +137,8 @@ export const APPS: Record<string, AppConfig> = {
     icon: PlayCircle,
     color: 'text-orange-500',
     component: MediaPlayer,
-    defaultWidth: 600,
-    defaultHeight: 450
+    defaultWidth: 700,
+    defaultHeight: 500
   },
   terminal: {
     id: 'terminal',
@@ -111,8 +146,17 @@ export const APPS: Record<string, AppConfig> = {
     icon: Terminal,
     color: 'text-gray-700',
     component: TerminalApp,
-    defaultWidth: 700,
-    defaultHeight: 400
+    defaultWidth: 750,
+    defaultHeight: 450
+  },
+  tictactoe: {
+    id: 'tictactoe',
+    name: 'X / O',
+    icon: Gamepad2,
+    color: 'text-rose-500',
+    component: TicTacToe,
+    defaultWidth: 400,
+    defaultHeight: 500
   },
   bin: {
       id: 'bin',
@@ -132,25 +176,32 @@ export const INITIAL_FILE_SYSTEM = {
       "المستندات": { 
         type: "folder", 
         content: { 
-          "ملاحظة.txt": { type: "file", content: "مرحبا بك في ويندوز 11 ويب! تم حفظ هذا الملف محلياً." },
-          "مشروع.js": { type: "file", content: "console.log('Hello World');" }
+          "عني.txt": { type: "file", content: "مرحباً! أنا مطور واجهات أمامية شغوف ببناء تجارب ويب استثنائية." },
+          "السيرة_الذاتية.txt": { type: "file", content: "خبرة 5 سنوات في React و TypeScript\nبناء أنظمة تصميم متكاملة.\nالعمل مع فرق عالمية." },
+          "مشروع_ويندوز.js": { type: "file", content: "console.log('Welcome to my Portfolio OS!');" }
         } 
       },
+      "سطح المكتب": { 
+        type: "folder", 
+        content: {
+          "مشروعي_القادم.txt": { type: "file", content: "فكرة تطبيق ثوري للذكاء الاصطناعي..." }
+        } 
+      },
+      "التنزيلات": { type: "folder", content: {} },
       "سلة المحذوفات": { type: "folder", content: {} },
       "الصور": { 
         type: "folder", 
         content: { 
-          "طبيعة.jpg": { type: "image", content: "nature" }, 
-          "سيارة.jpg": { type: "image", content: "car" } 
+          "تصميم_ui.jpg": { type: "image", content: "https://images.unsplash.com/photo-1581291518633-83b4ebd1d83e?q=80&w=1000" }, 
+          "مكتب_العمل.jpg": { type: "image", content: "https://images.unsplash.com/photo-1499951360447-b19be8fe80f5?q=80&w=1000" } 
         } 
       },
       "الموسيقى": {
         type: "folder",
         content: {
-          "لحن_هادئ.mp3": { type: "audio", content: "chill" }
+          "تركيز_عميق.mp3": { type: "audio", content: "chill" }
         }
-      },
-      "التنزيلات": { type: "folder", content: {} }
+      }
     }
   }
 };

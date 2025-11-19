@@ -76,7 +76,7 @@ export const useFileSystem = () => {
     });
   }, []);
 
-  // 3. Create Item
+  // 3. Create Item (Generic)
   const createItem = useCallback((path: string[], type: 'folder' | 'file') => {
     setFs(prev => {
       const newFs = JSON.parse(JSON.stringify(prev));
@@ -106,7 +106,28 @@ export const useFileSystem = () => {
     });
   }, []);
 
-  // 4. Update File Content (Save)
+  // 4. Create File with Content (Specific)
+  const createFile = useCallback((path: string[], name: string, content: string, type: 'file' | 'image' | 'video' | 'audio' = 'file') => {
+    setFs(prev => {
+      const newFs = JSON.parse(JSON.stringify(prev));
+      const dir = getDir(newFs, path);
+      if (dir) {
+          let finalName = name;
+          let counter = 2;
+          const dotIndex = name.lastIndexOf('.');
+          const [base, ext] = dotIndex !== -1 ? [name.substring(0, dotIndex), name.substring(dotIndex)] : [name, ''];
+          
+          while (dir[finalName]) {
+              finalName = `${base} (${counter})${ext}`;
+              counter++;
+          }
+          dir[finalName] = { type, content, dateModified: new Date() };
+      }
+      return newFs;
+    });
+  }, []);
+
+  // 5. Update File Content (Save)
   const updateFileContent = useCallback((path: string[], content: string) => {
     setFs(prev => {
       const newFs = JSON.parse(JSON.stringify(prev));
@@ -118,12 +139,13 @@ export const useFileSystem = () => {
       
       if (dir && dir[fileName]) {
         dir[fileName].content = content;
+        dir[fileName].dateModified = new Date();
       }
       return newFs;
     });
   }, []);
 
-  // 5. Reset File System
+  // 6. Reset File System
   const resetFileSystem = useCallback(() => {
     setFs(JSON.parse(JSON.stringify(INITIAL_FILE_SYSTEM)));
   }, []);
@@ -132,6 +154,7 @@ export const useFileSystem = () => {
     renameItem,
     deleteItem,
     createItem,
+    createFile,
     updateFileContent,
     resetFileSystem
   };

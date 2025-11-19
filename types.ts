@@ -1,7 +1,7 @@
 import React from 'react';
 import { LucideIcon } from 'lucide-react';
 
-export type AppId = 'explorer' | 'edge' | 'store' | 'settings' | 'notepad' | 'calculator' | 'vscode' | 'photos' | 'terminal' | 'bin' | 'media';
+export type AppId = 'explorer' | 'edge' | 'store' | 'settings' | 'notepad' | 'calculator' | 'vscode' | 'photos' | 'terminal' | 'bin' | 'media' | 'paint' | 'camera' | 'taskmanager' | 'tictactoe';
 
 export interface AppConfig {
   id: AppId;
@@ -38,6 +38,11 @@ export interface ToastNotification {
   type: 'info' | 'success' | 'warning';
 }
 
+export interface BatteryState {
+  level: number;
+  charging: boolean;
+}
+
 export interface AppProps {
   windowId: string;
   contentProps?: any;
@@ -50,11 +55,21 @@ export interface AppProps {
   onAddToRecents?: (file: RecentFile) => void;
   onSetWallpaper?: (url: string) => void; 
   showToast?: (title: string, message: string) => void;
-  onSystemAction?: (action: 'shutdown' | 'restart' | 'reset' | 'bsod' | 'lock') => void;
+  onSystemAction?: (action: 'shutdown' | 'restart' | 'reset' | 'bsod' | 'lock' | 'sleep') => void;
   fsOperations?: FsOperations;
-  // Theme
+  // Theme & Personalization
   isDark?: boolean;
   toggleTheme?: () => void;
+  accentColor?: string;
+  setAccentColor?: (color: string) => void;
+  nightLight?: boolean;
+  setNightLight?: (enabled: boolean) => void;
+  taskbarAlign?: 'center' | 'left'; // 'left' in LTR is 'right' in RTL visually if we flip
+  setTaskbarAlign?: (align: 'center' | 'left') => void;
+  // System Info
+  openWindows?: WindowState[];
+  battery?: BatteryState;
+  isOnline?: boolean;
 }
 
 export interface FileSystemItem {
@@ -72,6 +87,7 @@ export interface FsOperations {
   renameItem: (path: string[], oldName: string, newName: string) => void;
   deleteItem: (path: string[], name: string) => void;
   createItem: (path: string[], type: 'folder' | 'file') => void;
+  createFile: (path: string[], name: string, content: string, type?: 'file' | 'image' | 'video' | 'audio') => void;
   updateFileContent: (path: string[], content: string) => void;
   resetFileSystem: () => void;
 }
